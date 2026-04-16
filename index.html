@@ -1,0 +1,177 @@
+<!doctype html>
+<html lang="id">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>VNTranslator Copas Tool (Web)</title>
+  <link rel="stylesheet" href="./styles.css" />
+  <script defer src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+  <script defer src="./app.js"></script>
+</head>
+<body>
+  <div class="app-shell">
+    <header class="toolbar">
+      <button id="btnImportFile" class="btn">Impor File</button>
+      <button id="btnImportFolder" class="btn">Impor Folder</button>
+      <button id="btnImportZip" class="btn">Impor ZIP</button>
+      <button id="btnExport" class="btn">Ekspor</button>
+      <button id="btnProofread" class="btn">Proofread</button>
+      <button id="btnSettings" class="btn">Setting</button>
+      <span class="toolbar-sep"></span>
+      <span class="toolbar-label">Sesi:</span>
+      <button id="btnSaveSession" class="btn">Simpan</button>
+      <button id="btnLoadSession" class="btn">Muat</button>
+      <span class="grow"></span>
+      <span id="toolbarHint" class="hint">Static Web Mode (GitHub Pages Ready)</span>
+    </header>
+
+    <main class="split-layout">
+      <section class="panel panel-left">
+        <h2 class="panel-title">Pratinjau Samping-Samping</h2>
+        <div class="preview-header-grid">
+          <div>Original</div>
+          <div>Terjemahan</div>
+        </div>
+        <div id="previewViewport" class="preview-viewport">
+          <div id="previewSpacer" class="preview-spacer"></div>
+          <div id="previewRowsLayer" class="preview-rows-layer"></div>
+        </div>
+
+        <div class="progress-wrap">
+          <span>Progress:</span>
+          <div class="progress-track">
+            <div id="progressFill" class="progress-fill"></div>
+          </div>
+          <span id="progressText">0/0</span>
+        </div>
+      </section>
+
+      <section class="panel panel-right">
+        <h2 class="panel-title">Area Kerja Terjemahan</h2>
+        <div class="range-row">
+          <label for="fromInput">Dari baris:</label>
+          <input id="fromInput" type="number" min="1" value="1" />
+          <label for="toInput">Sampai:</label>
+          <input id="toInput" type="number" min="1" value="1" />
+        </div>
+
+        <button id="btnCopyForAi" class="btn btn-wide">Copy untuk AI</button>
+        <div id="copyStatus" class="hint"></div>
+
+        <label class="section-label" for="pasteArea">Paste hasil terjemahan AI di sini</label>
+        <textarea id="pasteArea" class="mono input-area" placeholder="Paste hasil terjemahan AI di sini..."></textarea>
+
+        <div class="inline-actions">
+          <button id="btnApply" class="btn">Terapkan Terjemahan</button>
+          <button id="btnUndo" class="btn" disabled>Undo Penerapan Terakhir</button>
+        </div>
+
+        <label class="section-label">Tabel Terjemahan Nama</label>
+        <div id="nameTableWrap" class="name-table-wrap">
+          <table class="name-table">
+            <thead>
+              <tr>
+                <th>Nama Asli</th>
+                <th>Terjemahan</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody id="nameTableBody"></tbody>
+          </table>
+        </div>
+        <button id="btnAddName" class="btn btn-wide">+ Tambah Nama</button>
+      </section>
+    </main>
+
+    <footer id="statusBar" class="status-bar">
+      File: - | Baris: 0 | Diterjemahkan: 0/0 (0%)
+    </footer>
+  </div>
+
+  <input id="importFileInput" type="file" accept=".json" hidden />
+  <input id="importFolderInput" type="file" accept=".json" webkitdirectory directory multiple hidden />
+  <input id="importZipInput" type="file" accept=".zip" hidden />
+  <input id="loadSessionInput" type="file" accept=".vntrans,.json" hidden />
+
+  <div id="startupModal" class="modal-backdrop open">
+    <div class="modal">
+      <h3>Mulai Proyek</h3>
+      <p id="startupInfo" class="hint">Pilih cara memulai proyek.</p>
+      <div class="modal-actions">
+        <button id="btnStartupLast" class="btn">Proyek Terakhir</button>
+        <button id="btnStartupLoad" class="btn">Pilih File Session</button>
+        <button id="btnStartupNew" class="btn btn-primary">Proyek Baru</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="settingsModal" class="modal-backdrop">
+    <div class="modal modal-wide">
+      <h3>Pengaturan Prompt</h3>
+      <p class="hint">Prompt ini dipakai saat klik "Copy untuk AI".</p>
+      <textarea id="settingsPromptInput" class="mono input-area modal-text"></textarea>
+      <div class="modal-actions">
+        <button id="btnSettingsReset" class="btn">Reset Default</button>
+        <span class="grow"></span>
+        <button id="btnSettingsCancel" class="btn">Batal</button>
+        <button id="btnSettingsSave" class="btn btn-primary">Simpan Prompt</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="lineEditorModal" class="modal-backdrop">
+    <div class="modal modal-wide">
+      <h3 id="lineEditorTitle">Edit Terjemahan</h3>
+      <p id="lineEditorInfo" class="hint"></p>
+      <label class="section-label">Teks Asli</label>
+      <textarea id="lineOriginalView" class="mono input-area small" readonly></textarea>
+      <div id="lineNameWrap">
+        <label class="section-label">Nama Karakter (Terjemahan)</label>
+        <input id="lineNameInput" class="mono text-input" type="text" />
+      </div>
+      <label class="section-label">Terjemahan (Bisa di-replace)</label>
+      <textarea id="lineMessageInput" class="mono input-area"></textarea>
+      <label class="checkbox-line">
+        <input id="lineTranslatedCheck" type="checkbox" />
+        Tandai sebagai sudah diterjemahkan
+      </label>
+      <div class="modal-actions">
+        <button id="btnLineCancel" class="btn">Batal</button>
+        <button id="btnLineSave" class="btn btn-primary">Simpan Perubahan</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="proofreadModal" class="modal-backdrop">
+    <div class="modal modal-xl">
+      <h3>Proofread Terjemahan</h3>
+      <div class="proofread-search-row">
+        <label for="proofreadSearchInput">Cari:</label>
+        <input id="proofreadSearchInput" class="mono text-input" type="text" placeholder="Ketik kata atau pola regex..." />
+        <label class="checkbox-line"><input id="proofreadRegexCheck" type="checkbox" /> Regex (Python-style)</label>
+        <label class="checkbox-line"><input id="proofreadCaseCheck" type="checkbox" /> Case Sensitive</label>
+        <label class="checkbox-line"><input id="proofreadTranslatedOnlyCheck" type="checkbox" checked /> Hanya yang sudah diterjemahkan</label>
+        <button id="btnProofreadSearch" class="btn">Cari</button>
+        <button id="btnProofreadReset" class="btn">Reset</button>
+      </div>
+      <p id="proofreadStatus" class="hint"></p>
+      <div class="proofread-table-wrap">
+        <table class="proofread-table">
+          <thead>
+            <tr>
+              <th>Baris</th>
+              <th>File</th>
+              <th>Original</th>
+              <th>Terjemahan</th>
+            </tr>
+          </thead>
+          <tbody id="proofreadTableBody"></tbody>
+        </table>
+      </div>
+      <div class="modal-actions">
+        <button id="btnProofreadClose" class="btn btn-primary">Tutup</button>
+      </div>
+    </div>
+  </div>
+</body>
+</html>
