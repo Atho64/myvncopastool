@@ -549,21 +549,30 @@ input[type="number"] {
   }
 
   .preview-header-grid {
-    min-width: 560px;
+    display: none;
   }
 
   .preview-viewport {
     height: 34vh;
-    overflow-x: auto;
+    overflow-x: hidden;
   }
 
   .preview-spacer,
   .preview-rows-layer {
-    min-width: 560px;
+    min-width: 100%;
   }
 
   .preview-row {
-    grid-template-columns: minmax(280px, 1fr) minmax(280px, 1fr);
+    grid-template-columns: 1fr;
+    grid-template-rows: 1fr 1fr;
+  }
+
+  .preview-row .cell {
+    border-right: none;
+  }
+
+  .preview-row .cell:first-child {
+    border-bottom: 1px solid #31405b;
   }
 
   .range-row {

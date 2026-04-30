@@ -1,17 +1,19 @@
-﻿(() => {
+(() => {
   "use strict";
 
   const DEFAULT_PROMPT_HEADER = `"""
-Terjemahkan teks visual novel berikut dari bahasa Jepang ke bahasa Indonesia.
-Pertahankan format yang sama persis (nomor baris, nama karakter, tanda baca).
-Jangan tambahkan penjelasan apapun, hanya terjemahan.
-Jika ada nama karakter (sebelum titik dua), terjemahkan juga namanya jika ada 
-padanan Indonesia yang natural, atau biarkan jika nama diri/tidak ada padanan.
-
+Localize entire text into Indonesian. These are the rules:
+Refine text by using common, natural, and accurate words.
+Do not change text structure.
+Euphemism prohibited.
+Use of "Bahasa Jakarta Selatan" is prohibited.
+Use glossary.txt as glossary.
+Translate All names.
+Put results inside \`\`\`plaintext.
 """`;
 
   const LINE_REGEX = /^\s*(\d+)\s*[.)]\s*(?:(.*?)\s*[:：]\s*)?(.+?)\s*$/u;
-  const PREVIEW_ROW_HEIGHT = 30;
+  let PREVIEW_ROW_HEIGHT = window.innerWidth <= 560 ? 60 : 30;
   const PROOFREAD_RENDER_LIMIT = 5000;
   const STORAGE_KEYS = {
     autosave: "vntranslator_web_autosave",
@@ -29,6 +31,7 @@ padanan Indonesia yang natural, atau biarkan jika nama diri/tidak ada padanan.
     sourceLabel: "",
     displayRows: [],
     lineByNum: new Map(),
+    lastCopiedRange: null,
   };
 
   const ui = {};
@@ -161,6 +164,14 @@ padanan Indonesia yang natural, atau biarkan jika nama diri/tidak ada padanan.
       ui.loadSessionInput.click();
     });
     ui.btnStartupNew.addEventListener("click", () => closeModal(ui.startupModal));
+
+    window.addEventListener("resize", () => {
+      const newHeight = window.innerWidth <= 560 ? 60 : 30;
+      if (newHeight !== PREVIEW_ROW_HEIGHT) {
+        PREVIEW_ROW_HEIGHT = newHeight;
+        queuePreviewRender();
+      }
+    });
   }
 
   function isTranslated(line) {
@@ -517,6 +528,7 @@ padanan Indonesia yang natural, atau biarkan jika nama diri/tidak ada padanan.
     state.importedFiles = importedFiles;
     state.nameTable = {};
     state.sourceLabel = sourceLabel || "";
+    state.lastCopiedRange = null;
     state.selectedFrom = 1;
     state.selectedTo = Math.min(30, Math.max(lines.length, 1));
     ui.pasteArea.value = "";
@@ -703,31 +715,192 @@ padanan Indonesia yang natural, atau biarkan jika nama diri/tidak ada padanan.
     }
     state.selectedFrom = lo;
     state.selectedTo = hi;
+    state.lastCopiedRange = { from: lo, to: hi };
     refreshRangeInputs();
     renderPreviewRows();
   }
 
   function parseReadableTranslations(text) {
-    const out = [];
-    const lines = String(text || "").split(/\r?\n/);
-    for (const raw of lines) {
+    const entries = [];
+    const malformedLines = [];
+    const rows = String(text || "").split(/\r?\n/);
+    for (let idx = 0; idx < rows.length; idx += 1) {
+      const raw = rows[idx];
       const line = raw.trim();
-      if (!line || line.startsWith("#") || line.startsWith('"""')) continue;
+      if (!line) continue;
+      if (line.startsWith("#") || line.startsWith('"""') || line.startsWith("```")) continue;
+
+      if (!/^\d+/.test(line)) continue;
+
       const match = line.match(LINE_REGEX);
-      if (!match) continue;
+      if (!match) {
+        malformedLines.push({ input_row: idx + 1, text: line });
+        continue;
+      }
 
       const lineNum = Number(match[1]);
       const rawName = (match[2] || "").trim();
       const message = (match[3] || "").trim();
-      if (!lineNum || !message) continue;
+      if (!lineNum || !message) {
+        malformedLines.push({ input_row: idx + 1, text: line });
+        continue;
+      }
 
-      out.push({
+      entries.push({
         line_num: lineNum,
         name: rawName || null,
         message,
       });
     }
-    return out;
+    return { entries, malformedLines };
+  }
+
+  function summarizeLineNums(nums, limit) {
+    const safeLimit = Math.max(1, Number(limit) || 8);
+    const uniqueSorted = [...new Set(nums)].sort((a, b) => a - b);
+    if (!uniqueSorted.length) return "-";
+    const shown = uniqueSorted.slice(0, safeLimit).join(", ");
+    if (uniqueSorted.length <= safeLimit) return shown;
+    return `${shown}, ... (+${uniqueSorted.length - safeLimit})`;
+  }
+
+  function summarizeMalformedLines(malformedLines, limit) {
+    const safeLimit = Math.max(1, Number(limit) || 3);
+    if (!malformedLines.length) return "";
+    const snippets = malformedLines.slice(0, safeLimit).map((item) => {
+      const snippet = item.text.length > 42 ? `${item.text.slice(0, 42)}...` : item.text;
+      return `baris input #${item.input_row} ("${snippet}")`;
+    });
+    const suffix = malformedLines.length > safeLimit
+      ? `, +${malformedLines.length - safeLimit} baris lain`
+      : "";
+    return `${snippets.join("; ")}${suffix}`;
+  }
+
+  function getExpectedApplyRange() {
+    const [selectedLo, selectedHi] = selectedRange();
+    if (
+      state.lastCopiedRange &&
+      Number.isInteger(state.lastCopiedRange.from) &&
+      Number.isInteger(state.lastCopiedRange.to) &&
+      state.lastCopiedRange.from > 0 &&
+      state.lastCopiedRange.to > 0
+    ) {
+      const copiedLo = Math.min(state.lastCopiedRange.from, state.lastCopiedRange.to);
+      const copiedHi = Math.max(state.lastCopiedRange.from, state.lastCopiedRange.to);
+      if (copiedLo === selectedLo && copiedHi === selectedHi) {
+        return [copiedLo, copiedHi];
+      }
+    }
+    return [selectedLo, selectedHi];
+  }
+
+  function analyzeApplyAnomalies(entries, expectedLo, expectedHi) {
+    const freq = new Map();
+    const unknownNums = new Set();
+    const outOfRangeNums = new Set();
+    const knownInRangeNums = new Set();
+    let nonAscendingCount = 0;
+    let previousLineNum = null;
+
+    for (const item of entries) {
+      const num = item.line_num;
+      freq.set(num, (freq.get(num) || 0) + 1);
+      if (previousLineNum != null && num < previousLineNum) {
+        nonAscendingCount += 1;
+      }
+      previousLineNum = num;
+
+      const line = state.lineByNum.get(num);
+      if (!line) {
+        unknownNums.add(num);
+        continue;
+      }
+      if (num < expectedLo || num > expectedHi) {
+        outOfRangeNums.add(num);
+        continue;
+      }
+      knownInRangeNums.add(num);
+    }
+
+    const duplicateLineNums = [];
+    let duplicateExtraCount = 0;
+    for (const [num, count] of freq.entries()) {
+      if (count > 1) {
+        duplicateLineNums.push(num);
+        duplicateExtraCount += (count - 1);
+      }
+    }
+    duplicateLineNums.sort((a, b) => a - b);
+
+    const missingNums = [];
+    for (let num = expectedLo; num <= expectedHi; num += 1) {
+      if (!knownInRangeNums.has(num)) {
+        missingNums.push(num);
+      }
+    }
+
+    const expectedCount = Math.max(0, expectedHi - expectedLo + 1);
+    return {
+      expectedCount,
+      parsedCount: entries.length,
+      uniqueCount: freq.size,
+      duplicateLineNums,
+      duplicateExtraCount,
+      nonAscendingCount,
+      unknownLineNums: [...unknownNums].sort((a, b) => a - b),
+      outOfRangeLineNums: [...outOfRangeNums].sort((a, b) => a - b),
+      missingLineNums: missingNums,
+    };
+  }
+
+  function buildApplyAnomalyMessage(parseResult, anomaly, expectedLo, expectedHi) {
+    const details = [];
+
+    if (anomaly.uniqueCount !== anomaly.expectedCount) {
+      details.push(
+        `Jumlah nomor unik (${anomaly.uniqueCount}) tidak sama dengan rentang target ${expectedLo}-${expectedHi} (${anomaly.expectedCount}).`
+      );
+    }
+    if (anomaly.nonAscendingCount > 0) {
+      details.push(
+        `Nomor baris tidak urut naik di ${anomaly.nonAscendingCount} titik (indikasi urutan acak).`
+      );
+    }
+    if (anomaly.duplicateLineNums.length) {
+      details.push(
+        `Nomor duplikat terdeteksi: ${summarizeLineNums(anomaly.duplicateLineNums, 10)} (entri terakhir yang dipakai).`
+      );
+    }
+    if (anomaly.missingLineNums.length) {
+      details.push(
+        `Nomor yang hilang dari rentang target: ${summarizeLineNums(anomaly.missingLineNums, 10)}.`
+      );
+    }
+    if (anomaly.outOfRangeLineNums.length) {
+      details.push(
+        `Nomor valid tapi di luar rentang target: ${summarizeLineNums(anomaly.outOfRangeLineNums, 10)}.`
+      );
+    }
+    if (anomaly.unknownLineNums.length) {
+      details.push(
+        `Nomor tidak ditemukan di proyek aktif: ${summarizeLineNums(anomaly.unknownLineNums, 10)}.`
+      );
+    }
+    if (parseResult.malformedLines.length) {
+      details.push(
+        `Format baris tidak dikenali: ${parseResult.malformedLines.length} baris (${summarizeMalformedLines(parseResult.malformedLines, 3)}).`
+      );
+    }
+
+    if (!details.length) return "";
+
+    return [
+      "Terdeteksi anomali pada hasil paste AI:",
+      ...details.map((line) => `- ${line}`),
+      "",
+      "Tetap lanjutkan penerapan terjemahan?",
+    ].join("\n");
   }
 
   function onApplyTranslation() {
@@ -735,9 +908,47 @@ padanan Indonesia yang natural, atau biarkan jika nama diri/tidak ada padanan.
       alert("Belum ada data.");
       return;
     }
-    const parsed = parseReadableTranslations(ui.pasteArea.value);
-    if (!parsed.length) {
+    const parseResult = parseReadableTranslations(ui.pasteArea.value);
+    if (!parseResult.entries.length) {
       alert("Tidak ada baris valid terbaca.");
+      return;
+    }
+
+    const [expectedLo, expectedHi] = getExpectedApplyRange();
+    const anomaly = analyzeApplyAnomalies(parseResult.entries, expectedLo, expectedHi);
+    const anomalyMessage = buildApplyAnomalyMessage(parseResult, anomaly, expectedLo, expectedHi);
+
+    if (anomalyMessage) {
+      const proceed = window.confirm(anomalyMessage);
+      if (!proceed) {
+        flashHint("Penerapan dibatalkan agar bisa cek hasil paste dulu.");
+        return;
+      }
+    }
+
+    const latestByLine = new Map();
+    for (const item of parseResult.entries) {
+      latestByLine.set(item.line_num, item);
+    }
+
+    const plannedUpdates = [];
+    let skippedUnknown = 0;
+    for (const item of latestByLine.values()) {
+      const line = state.lineByNum.get(item.line_num);
+      if (!line) {
+        skippedUnknown += 1;
+        continue;
+      }
+      const msg = (item.message || "").trim();
+      if (!msg) {
+        skippedUnknown += 1;
+        continue;
+      }
+      plannedUpdates.push({ line, item, msg });
+    }
+
+    if (!plannedUpdates.length) {
+      alert("Tidak ada perubahan yang diterapkan.");
       return;
     }
 
@@ -748,18 +959,8 @@ padanan Indonesia yang natural, atau biarkan jika nama diri/tidak ada padanan.
     ui.btnUndo.disabled = false;
 
     let affected = 0;
-    let skipped = 0;
-    for (const item of parsed) {
-      const line = state.lineByNum.get(item.line_num);
-      if (!line) {
-        skipped += 1;
-        continue;
-      }
-      const msg = (item.message || "").trim();
-      if (!msg) {
-        skipped += 1;
-        continue;
-      }
+    for (const update of plannedUpdates) {
+      const { line, item, msg } = update;
 
       line.trans_message = msg;
       line.is_translated = true;
@@ -775,11 +976,6 @@ padanan Indonesia yang natural, atau biarkan jika nama diri/tidak ada padanan.
       affected += 1;
     }
 
-    if (!affected) {
-      alert("Tidak ada perubahan yang diterapkan.");
-      return;
-    }
-
     ui.pasteArea.value = "";
     renderNameTable();
     renderPreviewRows();
@@ -787,8 +983,10 @@ padanan Indonesia yang natural, atau biarkan jika nama diri/tidak ada padanan.
     renderProofreadResultsIfOpen();
     autoSaveProject("apply_translation");
 
-    if (skipped) {
-      flashHint(`OK. ${affected} baris diterapkan, ${skipped} baris dilewati.`);
+    const anomalySkipped =
+      skippedUnknown + anomaly.duplicateExtraCount + parseResult.malformedLines.length;
+    if (anomalySkipped) {
+      flashHint(`OK. ${affected} baris diterapkan. Dilewati/anomali: ${anomalySkipped}.`);
     } else {
       flashHint(`OK. ${affected} baris berhasil diterjemahkan.`);
     }
@@ -1001,6 +1199,7 @@ padanan Indonesia yang natural, atau biarkan jika nama diri/tidak ada padanan.
       lines: state.lines,
       prompt_header: state.aiInstructionHeader,
       source_label: state.sourceLabel,
+      last_copied_range: state.lastCopiedRange,
     };
   }
 
@@ -1024,6 +1223,21 @@ padanan Indonesia yang natural, atau biarkan jika nama diri/tidak ada padanan.
       : {};
     state.aiInstructionHeader = (payload.prompt_header || "").trim() || DEFAULT_PROMPT_HEADER;
     state.sourceLabel = String(payload.source_label || "");
+    const copiedRange = payload.last_copied_range;
+    if (
+      copiedRange &&
+      Number.isInteger(copiedRange.from) &&
+      Number.isInteger(copiedRange.to) &&
+      copiedRange.from > 0 &&
+      copiedRange.to > 0
+    ) {
+      state.lastCopiedRange = {
+        from: copiedRange.from,
+        to: copiedRange.to,
+      };
+    } else {
+      state.lastCopiedRange = null;
+    }
     state.selectedFrom = 1;
     state.selectedTo = Math.min(30, Math.max(state.lines.length, 1));
     ui.pasteArea.value = "";
