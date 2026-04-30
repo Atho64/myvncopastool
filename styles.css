@@ -537,8 +537,8 @@ input[type="number"] {
   .toolbar-group,
   .toolbar-group-session {
     display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 8px;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 6px;
     width: 100%;
   }
 
@@ -553,7 +553,12 @@ input[type="number"] {
   }
 
   .panel-title {
-    font-size: 14px;
+    font-size: 13px;
+    margin-bottom: 4px;
+  }
+
+  .panel {
+    padding: 8px;
   }
 
   .preview-header-grid {
@@ -592,29 +597,29 @@ input[type="number"] {
 
   .range-row {
     grid-template-columns: 1fr 1fr;
-    gap: 8px;
+    gap: 6px;
   }
 
   .btn {
-    font-size: 15px;
-    padding: 12px;
+    font-size: 12px;
+    padding: 8px 6px;
   }
 
   .mono,
   .text-input,
   input[type="number"],
   .input-area {
-    font-size: 14px;
+    font-size: 12px;
   }
 
   .text-input,
   input[type="number"] {
-    height: 42px;
+    height: 36px;
   }
 
   .section-label,
   .field-group label {
-    font-size: 14px;
+    font-size: 12px;
   }
 
   .input-area {
