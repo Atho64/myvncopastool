@@ -532,8 +532,14 @@ input[type="number"] {
     padding: 10px;
   }
 
-  .toolbar-group .btn,
-  .toolbar-group-session .btn,
+  .toolbar-group,
+  .toolbar-group-session {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    width: 100%;
+  }
+
   .btn-wide,
   .inline-actions .btn {
     width: 100%;
@@ -565,10 +571,17 @@ input[type="number"] {
   .preview-row {
     grid-template-columns: 1fr;
     grid-template-rows: 1fr 1fr;
+    height: 80px;
   }
 
   .preview-row .cell {
     border-right: none;
+    white-space: normal;
+    line-height: 1.3;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    padding: 6px 8px;
   }
 
   .preview-row .cell:first-child {

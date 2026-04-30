@@ -13,7 +13,7 @@ Put results inside \`\`\`plaintext.
 """`;
 
   const LINE_REGEX = /^\s*(\d+)\s*[.)]\s*(?:(.*?)\s*[:：]\s*)?(.+?)\s*$/u;
-  let PREVIEW_ROW_HEIGHT = window.innerWidth <= 560 ? 60 : 30;
+  let PREVIEW_ROW_HEIGHT = window.innerWidth <= 560 ? 80 : 30;
   const PROOFREAD_RENDER_LIMIT = 5000;
   const STORAGE_KEYS = {
     autosave: "vntranslator_web_autosave",
@@ -166,7 +166,7 @@ Put results inside \`\`\`plaintext.
     ui.btnStartupNew.addEventListener("click", () => closeModal(ui.startupModal));
 
     window.addEventListener("resize", () => {
-      const newHeight = window.innerWidth <= 560 ? 60 : 30;
+      const newHeight = window.innerWidth <= 560 ? 80 : 30;
       if (newHeight !== PREVIEW_ROW_HEIGHT) {
         PREVIEW_ROW_HEIGHT = newHeight;
         queuePreviewRender();
