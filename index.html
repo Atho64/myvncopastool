@@ -11,18 +11,22 @@
 <body>
   <div class="app-shell">
     <header class="toolbar">
-      <button id="btnImportFile" class="btn">Impor File</button>
-      <button id="btnImportFolder" class="btn">Impor Folder</button>
-      <button id="btnImportZip" class="btn">Impor ZIP</button>
-      <button id="btnExport" class="btn">Ekspor</button>
-      <button id="btnProofread" class="btn">Proofread</button>
-      <button id="btnSettings" class="btn">Setting</button>
+      <div class="toolbar-group">
+        <button id="btnImportFile" class="btn">Impor File</button>
+        <button id="btnImportFolder" class="btn">Impor Folder</button>
+        <button id="btnImportZip" class="btn">Impor ZIP</button>
+        <button id="btnExport" class="btn">Ekspor</button>
+        <button id="btnProofread" class="btn">Proofread</button>
+        <button id="btnSettings" class="btn">Setting</button>
+      </div>
       <span class="toolbar-sep"></span>
-      <span class="toolbar-label">Sesi:</span>
-      <button id="btnSaveSession" class="btn">Simpan</button>
-      <button id="btnLoadSession" class="btn">Muat</button>
+      <div class="toolbar-group toolbar-group-session">
+        <span class="toolbar-label">Sesi:</span>
+        <button id="btnSaveSession" class="btn">Simpan</button>
+        <button id="btnLoadSession" class="btn">Muat</button>
+      </div>
       <span class="grow"></span>
-      <span id="toolbarHint" class="hint">Static Web Mode (GitHub Pages Ready)</span>
+      <span id="toolbarHint" class="hint toolbar-hint">Static Web Mode (GitHub Pages Ready)</span>
     </header>
 
     <main class="split-layout">
@@ -49,10 +53,14 @@
       <section class="panel panel-right">
         <h2 class="panel-title">Area Kerja Terjemahan</h2>
         <div class="range-row">
-          <label for="fromInput">Dari baris:</label>
-          <input id="fromInput" type="number" min="1" value="1" />
-          <label for="toInput">Sampai:</label>
-          <input id="toInput" type="number" min="1" value="1" />
+          <div class="field-group">
+            <label for="fromInput">Dari baris:</label>
+            <input id="fromInput" type="number" min="1" value="1" />
+          </div>
+          <div class="field-group">
+            <label for="toInput">Sampai:</label>
+            <input id="toInput" type="number" min="1" value="1" />
+          </div>
         </div>
 
         <button id="btnCopyForAi" class="btn btn-wide">Copy untuk AI</button>
