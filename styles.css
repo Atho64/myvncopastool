@@ -27,6 +27,7 @@ body {
 
 body {
   min-height: 100vh;
+  overflow-x: hidden;
 }
 
 .mono {
@@ -117,6 +118,7 @@ body {
 
 .panel {
   padding: 10px;
+  min-width: 0;
 }
 
 .panel-left {
