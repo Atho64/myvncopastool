@@ -107,6 +107,8 @@ Put results inside \`\`\`plaintext.
       "proofreadStatus",
       "proofreadTableBody",
       "btnProofreadClose",
+      "proofreadReplaceInput",
+      "btnProofreadReplaceAll",
     ];
 
     for (const id of ids) {
@@ -151,6 +153,7 @@ Put results inside \`\`\`plaintext.
     ui.btnProofreadClose.addEventListener("click", () => closeModal(ui.proofreadModal));
     ui.btnProofreadSearch.addEventListener("click", renderProofreadResults);
     ui.btnProofreadReset.addEventListener("click", onResetProofread);
+    ui.btnProofreadReplaceAll.addEventListener("click", onProofreadReplaceAll);
     ui.proofreadSearchInput.addEventListener("keydown", (ev) => {
       if (ev.key === "Enter") {
         ev.preventDefault();
@@ -1171,6 +1174,91 @@ Put results inside \`\`\`plaintext.
       ui.proofreadStatus.textContent = `Ditemukan ${totalMatches} baris (ditampilkan ${PROOFREAD_RENDER_LIMIT} pertama).`;
     } else {
       ui.proofreadStatus.textContent = `Ditemukan ${totalMatches} baris.`;
+    }
+  }
+
+  function onProofreadReplaceAll() {
+    if (!ui.proofreadModal.classList.contains("open")) return;
+    if (!state.lines.length) return;
+
+    const query = ui.proofreadSearchInput.value || "";
+    const replaceText = ui.proofreadReplaceInput.value || "";
+    const useRegex = ui.proofreadRegexCheck.checked;
+    const caseSensitive = ui.proofreadCaseCheck.checked;
+    const translatedOnly = ui.proofreadTranslatedOnlyCheck.checked;
+
+    if (!query) {
+      alert("Masukkan kata pencarian terlebih dahulu.");
+      return;
+    }
+
+    let regex = null;
+    if (useRegex) {
+      try {
+        regex = new RegExp(query, caseSensitive ? "g" : "ig");
+      } catch (err) {
+        alert(`Regex tidak valid: ${err.message}`);
+        return;
+      }
+    }
+
+    const proceed = window.confirm(`Anda yakin ingin me-replace semua kecocokan dengan "${replaceText}"?`);
+    if (!proceed) return;
+
+    let replacedCount = 0;
+    
+    state.undoSnapshot = {
+      lines: deepClone(state.lines),
+      nameTable: { ...state.nameTable },
+    };
+    ui.btnUndo.disabled = false;
+
+    for (const line of state.lines) {
+      const translated = isTranslated(line);
+      if (translatedOnly && !translated) continue;
+
+      if (!line.trans_message) continue;
+
+      let newMsg = line.trans_message;
+      let ok = false;
+
+      if (useRegex) {
+        if (regex.test(newMsg)) {
+          regex.lastIndex = 0; // reset
+          newMsg = newMsg.replace(regex, replaceText);
+          ok = true;
+        }
+      } else {
+        if (caseSensitive) {
+          if (newMsg.includes(query)) {
+            newMsg = newMsg.split(query).join(replaceText);
+            ok = true;
+          }
+        } else {
+          const escapedQuery = query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+          const giRegex = new RegExp(escapedQuery, "ig");
+          if (giRegex.test(newMsg)) {
+            giRegex.lastIndex = 0;
+            newMsg = newMsg.replace(giRegex, replaceText);
+            ok = true;
+          }
+        }
+      }
+
+      if (ok && newMsg !== line.trans_message) {
+        line.trans_message = newMsg;
+        replacedCount++;
+      }
+    }
+
+    if (replacedCount > 0) {
+      renderPreviewRows();
+      updateStatusBar();
+      renderProofreadResults();
+      autoSaveProject("replace_all");
+      flashHint(`Berhasil mengganti di ${replacedCount} baris.`);
+    } else {
+      alert("Tidak ada kecocokan yang diganti.");
     }
   }
 
