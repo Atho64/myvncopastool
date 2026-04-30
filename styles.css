@@ -589,7 +589,30 @@ input[type="number"] {
   }
 
   .range-row {
-    grid-template-columns: 1fr;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+
+  .btn {
+    font-size: 15px;
+    padding: 12px;
+  }
+
+  .mono,
+  .text-input,
+  input[type="number"],
+  .input-area {
+    font-size: 14px;
+  }
+
+  .text-input,
+  input[type="number"] {
+    height: 42px;
+  }
+
+  .section-label,
+  .field-group label {
+    font-size: 14px;
   }
 
   .input-area {
